@@ -1,3 +1,4 @@
+"use strict";
 const nodemailer = require('nodemailer');
 const {randomUUID} = require('node:crypto');
 const path = require('node:path'); 
@@ -7,15 +8,19 @@ const {writeFileSync} = require('node:fs');
 const axios = require('axios'); //const Bot = require('node-telegram-bot-api');
 const sp = require('synchronized-promise');
 
-const LogFileName = path.join(homedir(), "calls.log");
-const EmailSubject = 'Twilio issue';
-
-WriteFileParams = {encoding:"utf8", flag:'a', flush:true};
+const HomeFolder = homedir();
+const WriteFileParams = {encoding:"utf8", flag:'a', flush:true};
+var ModuleName = "SERVICE";
 
 const LogType = {
     Info:       'INFO ',
+    Warn:       'WARN ',
     Error:      'ERROR',
     Critical:   '*CRITICAL*'
+}
+
+function set_module_name(name) {
+    ModuleName = name;
 }
 
 function pad(num, len=2) {
@@ -26,12 +31,14 @@ function format(type, msg, sid=undefined) {
     const d = new Date(); // More complex solution is: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Text_formatting#date_and_time_formatting
     const sd = `[${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(),3)}]`;
     const ssid = sid ? `[${String(sid)}]` : ':';
-    return `[TWILIO]${sd} ${type} ${ssid} ${String(msg)}\n`;
+    return `[${ModuleName}]${sd} ${type} ${ssid} ${String(msg)}\n`;
 }
 
 function write(text, sid=undefined) {
+    if(!process.env.LOG_FILENAME)
+        return;
     try {
-        writeFileSync(LogFileName, text, WriteFileParams);
+        writeFileSync(path.join(HomeFolder, process.env.LOG_FILENAME), text, WriteFileParams);
     }
     catch(e) {
         console.error(format(LogType.Critical, "Can't write error log: " + e.toString(), sid));
@@ -39,20 +46,26 @@ function write(text, sid=undefined) {
 }
 
 function info(msg, sid=undefined) {
-    text = format(LogType.Info, msg, sid);
+    let text = format(LogType.Info, msg, sid);
+    console.log(text);
+    write(text, sid);
+}
+
+function warn(msg, sid=undefined) {
+    let text = format(LogType.Warn, msg, sid);
     console.log(text);
     write(text, sid);
 }
 
 function error(msg, sid=undefined) {    
-    text = format(LogType.Error, msg.stack ? msg.stack : String(msg), sid);
+    let text = format(LogType.Error, msg.stack ? msg.stack : String(msg), sid);
     console.error(text);
-    pwrite = new Promise(resolve => {
+    let pwrite = new Promise(resolve => {
         write(text, sid);
         resolve();
     });
 
-    pbot = new Promise(async (resolve) => {
+    let pbot = new Promise(async (resolve) => {
         if(process.env.TELEGRAM_BOT_TOKEN)
         {
             try {
@@ -70,38 +83,38 @@ function error(msg, sid=undefined) {
         resolve();
     });
 
-    psend = new Promise(async (resolve) => {
-        try {
-            if(!process.env.SENDER_GMAIL)
-                throw new Error('SENDER_GMAIL env variable is not defined');
-            if(!process.env.SENDER_GMAIL_PASSWORD)
-                throw new Error('SENDER_GMAIL_PASSWORD env variable is not defined');
-            if(!process.env.ADMIN_EMAIL)
-                throw new Error('ADMIN_EMAIL env variable is not defined');
+    let psend = new Promise(async (resolve) => {
+        if(process.env.ADMIN_EMAIL) {
+            try {
+                if(!process.env.SENDER_GMAIL)
+                    throw new Error('SENDER_GMAIL env variable is not defined');
+                if(!process.env.SENDER_GMAIL_PASSWORD)
+                    throw new Error('SENDER_GMAIL_PASSWORD env variable is not defined');
 
-            const transporter = nodemailer.createTransport({
-                service: "Gmail",
-                //host: 'smtp.gmail.com',
-                //port: 587,
-                //logger: true, debug:true,
-                auth: {
-                    user: process.env.SENDER_GMAIL,
-                    pass: process.env.SENDER_GMAIL_PASSWORD
-                }
-            });
-            
-            const mailOptions = {
-                from: process.env.SENDER_GMAIL,
-                to: process.env.ADMIN_EMAIL,
-                subject: EmailSubject,
-                text: text,
-                headers: { References: randomUUID() }
-            };
+                const transporter = nodemailer.createTransport({
+                    service: "Gmail",
+                    //host: 'smtp.gmail.com',
+                    //port: 587,
+                    //logger: true, debug:true,
+                    auth: {
+                        user: process.env.SENDER_GMAIL,
+                        pass: process.env.SENDER_GMAIL_PASSWORD
+                    }
+                });
                 
-            await transporter.sendMail(mailOptions);
-        }
-        catch(e) {
-            console.error(format(LogType.Critical, "Can't send e-mail to admin: " + e.toString(), sid));
+                const mailOptions = {
+                    from: process.env.SENDER_GMAIL,
+                    to: process.env.ADMIN_EMAIL,
+                    subject: ModuleName + " error",
+                    text: text,
+                    headers: { References: randomUUID() }
+                };
+                    
+                await transporter.sendMail(mailOptions);
+            }
+            catch(e) {
+                console.error(format(LogType.Critical, "Can't send e-mail to admin: " + e.toString(), sid));
+            }
         }
         resolve();
     });
@@ -113,4 +126,6 @@ function error(msg, sid=undefined) {
 }
 
 exports.info = info;
+exports.warn = warn;
 exports.error = error;
+exports.set_module_name = set_module_name;

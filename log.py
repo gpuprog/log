@@ -11,25 +11,32 @@ import aiohttp
 from aiosmtplib import SMTP
 from email.mime.text import MIMEText
 
-_LogFileName = os.path.join(os.path.expanduser("~"), "calls.log")
-_EmailSubject = 'Chat Server issue'
-
-admin_email = os.environ['ADMIN_EMAIL']
-sender_email = os.environ['SENDER_GMAIL']
-sender_email_password = os.environ['SENDER_GMAIL_PASSWORD']
+_HomeFolder = os.path.expanduser('~')
+_ModuleName = 'SERVICE'
 
 class _LogType(str, Enum):
     Info=       'INFO '
+    Warn=       'WARN '
     Error=      'ERROR'
     Critical=   '*CRITICAL*'    
 
+def set_module_name(name):
+    global _ModuleName
+    _ModuleName = name
+    
 async def _send_email(text:str, sid:str=None):
+    if not ('ADMIN_EMAIL' in os.environ):
+        return
     try:
+        admin_email = os.environ['ADMIN_EMAIL']
+        sender_email = os.environ['SENDER_GMAIL']
+        sender_email_password = os.environ['SENDER_GMAIL_PASSWORD']
+        
         msg = MIMEText(text, 'plain')
         msg['References'] = f'<{str(uuid.uuid4())}>'
         msg['From'] = sender_email
         msg['To'] = admin_email
-        msg['Subject'] = _EmailSubject
+        msg['Subject'] = _ModuleName + ' error'
 
         mail = SMTP(hostname='smtp.gmail.com', port=587, start_tls=True)
         await mail.connect()
@@ -42,11 +49,14 @@ async def _send_email(text:str, sid:str=None):
 
 async def _write(text, sid=None):
     f = None
+    if not ('LOG_FILENAME' in os.environ):
+        return
     try:
-        f = await async_open(_LogFileName, "a")
+        filename = os.path.join(_HomeFolder, os.environ['LOG_FILENAME'])
+        f = await async_open(filename, "a")
         await f.write(text + '\n')
     except:
-        logging.error(_format(_LogType.Critical, "Can't write error log: " + traceback.format_exc(), sid))
+        logging.error(_format(_LogType.Critical, f"Can't write error log to {filename}: " + traceback.format_exc(), sid))
     if f is not None:
         await f.close() # flush
 
@@ -76,8 +86,13 @@ def _format(stype, msg, sid=None):
 def info(msg, sid=None):
     text = _format(_LogType.Info, msg, sid)
     logging.log(text)
-    asyncio.run(asyncio.create_task(_write(text, sid)))
+    asyncio.run(_write(text, sid))
     
+def warn(msg, sid=None):
+    text = _format(_LogType.Warn, msg, sid)
+    logging.log(text)
+    asyncio.run(_write(text, sid))
+
 def error(msg:str, sid:str=None):
     #text = _format(LogType.Error, msg.stack if msg.stack is not None else msg, sid)
     text = _format(_LogType.Error, msg, sid)

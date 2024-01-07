@@ -1,0 +1,24 @@
+[project]
+name = "gpuprog-log"
+version = "1.1.1"
+authors = [
+  { name="gpuprog", email="gpuprog@gmail.com" },
+]
+description = "Logging for microservices"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "aiofile",
+    "aiohttp",
+    "aiosmtplib",
+    "ujson"
+]
+
+[project.urls]
+Homepage = "https://github.com/gpuprog/log#readme"
+Issues = "https://github.com/gpuprog/log/issues"

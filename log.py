@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 
 _HomeFolder = os.path.expanduser('~')
 _ModuleName = 'SERVICE'
+logging.basicConfig(format='%(message)s')
 
 class _LogType(str, Enum):
     Info=       'INFO '
@@ -81,7 +82,7 @@ def _format(stype, msg, sid=None):
     d = datetime.now()
     sd = d.strftime('[%Y-%m-%d %H:%M:%S.') + f'{int(d.microsecond/1000):03d}]'
     ssid = f'[{sid}]' if sid is not None else ':'
-    return f'[SERVER]{sd} {stype} {str(ssid)} {str(msg)}'
+    return f'[{_ModuleName}]{sd} {stype} {str(ssid)} {str(msg)}'
 
 def info(msg, sid=None):
     text = _format(_LogType.Info, msg, sid)

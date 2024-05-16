@@ -11,6 +11,7 @@ const sp = require('synchronized-promise');
 const HomeFolder = homedir();
 const WriteFileParams = {encoding:"utf8", flag:'a', flush:true};
 var ModuleName = "SERVICE";
+var LogTimeoutMs = 3000;
 
 const LogType = {
     Info:       'INFO ',
@@ -21,6 +22,10 @@ const LogType = {
 
 function set_module_name(name) {
     ModuleName = name;
+}
+
+function set_log_timeout_ms(timeout) {
+    LogTimeoutMs = timeout;
 }
 
 function pad(num, len=2) {
@@ -53,13 +58,14 @@ function info(msg, sid=undefined) {
 
 function warn(msg, sid=undefined) {
     let text = format(LogType.Warn, msg, sid);
-    console.log(text);
+    console.warn(text);
     write(text, sid);
 }
 
-function error(msg, sid=undefined) {    
+function error(msg, sid=undefined) {
     let text = format(LogType.Error, msg.stack ? msg.stack : String(msg), sid);
     console.error(text);
+
     let pwrite = new Promise(resolve => {
         write(text, sid);
         resolve();
@@ -74,7 +80,23 @@ function error(msg, sid=undefined) {
             
                 //const bot = new Bot(process.env.TELEGRAM_BOT_TOKEN, {polling: true});
                 //await bot.sendMessage(String(process.env.TELEGRAM_BOT_TOKEN), text);
-                await axios.post(`https://api.telegram.org/bot${String(process.env.TELEGRAM_BOT_TOKEN)}/sendMessage`, {'chat_id': String(process.env.TELEGRAM_CHAT_ID), 'text':text});
+                let url = `https://api.telegram.org/bot${String(process.env.TELEGRAM_BOT_TOKEN)}/sendMessage`;
+                let chat_id = String(process.env.TELEGRAM_CHAT_ID);
+                try {
+                    let mtext = text.replaceAll('_','\\_').replaceAll('[','\\[');
+                    await axios.post(url, {'chat_id': chat_id, 'text':mtext, 'parse_mode':'Markdown'});
+                }
+                catch(e) {
+                    console.warn(`Can't send Markdown on Telegram: ${e.response && e.response.data && e.response.data.description ? e.response.data.description : (e.message?e.message:String(e))}`);
+                    try {
+                        await axios.post(url, {'chat_id': chat_id, 'text':text});
+                    }
+                    catch(e) {
+                        if(e.response && e.response.data && e.response.data.description)
+                            throw Error(e.response.description);
+                        throw e;
+                    }
+                }
             }
             catch(e) {
                 console.error(format(LogType.Critical, "Can't send error on Telegram: " + e.toString(), sid));
@@ -90,12 +112,9 @@ function error(msg, sid=undefined) {
                     throw new Error('SENDER_GMAIL env variable is not defined');
                 if(!process.env.SENDER_GMAIL_PASSWORD)
                     throw new Error('SENDER_GMAIL_PASSWORD env variable is not defined');
-
+    
                 const transporter = nodemailer.createTransport({
                     service: "Gmail",
-                    //host: 'smtp.gmail.com',
-                    //port: 587,
-                    //logger: true, debug:true,
                     auth: {
                         user: process.env.SENDER_GMAIL,
                         pass: process.env.SENDER_GMAIL_PASSWORD
@@ -109,7 +128,7 @@ function error(msg, sid=undefined) {
                     text: text,
                     headers: { References: randomUUID() }
                 };
-                    
+
                 await transporter.sendMail(mailOptions);
             }
             catch(e) {
@@ -119,13 +138,18 @@ function error(msg, sid=undefined) {
         resolve();
     });
 
-    // The Twilio engine kills process without await promises; to have log.error() be finished and not async we using sp library
-    // See node_modules\@twilio\runtime-handler\dist\dev-runtime\route.js forked.kill() and node_modules\@twilio\runtime-handler\dist\dev-runtime\internal\functionRunner.js process.send()
-    // Note: use functions instead promises to individually control throws
-    (sp(()=>{return Promise.all([ pwrite, psend, pbot ])}))();
+    // In some cases process can be killed without await promises; to have log.error() be finished and not async we are using sp library
+    // For example, Twilio dev: see node_modules\@twilio\runtime-handler\dist\dev-runtime\route.js forked.kill() and node_modules\@twilio\runtime-handler\dist\dev-runtime\internal\functionRunner.js process.send()
+    try {
+        (sp(()=>{return Promise.all([ pwrite, psend, pbot ])}, {timeouts: LogTimeoutMs}))();
+    }
+    catch(e) {
+        console.error(format(LogType.Critical, "Logger error: " + e.toString(), sid));
+    }
 }
 
 exports.info = info;
 exports.warn = warn;
 exports.error = error;
 exports.set_module_name = set_module_name;
+exports.set_log_timeout_ms = set_log_timeout_ms;

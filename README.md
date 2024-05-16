@@ -46,8 +46,8 @@ Recommended way for integration is to use it as git submodule - to update it for
 
 # Development
 `cd log`
-- Python: [Creating and publishing scoped public packages](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages)
+- JS: [Creating and publishing scoped public packages](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages)
 `npm publish --access public`
-- JS: [Packaging Python Projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
+- Python: [Packaging Python Projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
 `python -m build`
 `python -m twine upload --repository pypi dist/*`
